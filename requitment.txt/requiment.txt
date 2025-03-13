@@ -1,0 +1,10 @@
+logs/
+results/
+mental-health-model/
+mental-health-tokenizer/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3

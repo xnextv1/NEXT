@@ -1,0 +1,120 @@
+# Import library yang diperlukan
+from transformers import DistilBertTokenizer, DistilBertForSequenceClassification, Trainer, TrainingArguments
+from sklearn.model_selection import train_test_split
+import torch
+from datasets import Dataset
+import pandas as pd
+
+# Inisialisasi device (GPU/CPU)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Label mapping untuk klasifikasi
+label_map = {
+    0: "Anxiety",
+    1: "Normal",
+    2: "Depression",
+    3: "Suicidal",
+    4: "Stress",
+    5: "Bipolar",
+    6: "Personality disorder"
+}
+
+# Cetak label mapping
+print("Label Mapping:", label_map)
+
+# Contoh dataset kecil
+data = {
+    "text": [
+        "I am feeling great today!",
+        "I want to kill myself because of this situation.",
+        "My husband just blocked me and refuses to deal with my mental health.",
+        "Nobody takes me seriously.",
+        "I am feeling dizzy."
+    ],
+    "label": [1, 3, 0, 2, 4]  # Sesuaikan dengan label_map
+}
+
+# Konversi ke DataFrame
+df = pd.DataFrame(data)
+
+# Bagi dataset menjadi train dan test
+train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
+
+# Konversi ke format Dataset Hugging Face
+train_dataset = Dataset.from_pandas(train_df)
+test_dataset = Dataset.from_pandas(test_df)
+
+# Tokenizer
+model_name = "distilbert-base-uncased"
+tokenizer = DistilBertTokenizer.from_pretrained(model_name)
+
+# Fungsi untuk tokenisasi
+def tokenize_function(examples):
+    return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=512)
+
+# Tokenisasi dataset
+train_dataset = train_dataset.map(tokenize_function, batched=True)
+test_dataset = test_dataset.map(tokenize_function, batched=True)
+
+# Model
+model = DistilBertForSequenceClassification.from_pretrained(model_name, num_labels=len(label_map))
+
+# Training Arguments
+training_args = TrainingArguments(
+    output_dir="./results",
+    evaluation_strategy="epoch",
+    learning_rate=2e-5,
+    per_device_train_batch_size=8,
+    per_device_eval_batch_size=8,
+    num_train_epochs=3,
+    weight_decay=0.01,
+    logging_dir="./logs",
+    logging_steps=10,
+    save_steps=500,
+    save_total_limit=2,
+)
+
+# Trainer
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=train_dataset,
+    eval_dataset=test_dataset,
+)
+
+# Mulai pelatihan
+trainer.train()
+
+# Simpan model dan tokenizer
+model.save_pretrained("./mental-health-model")
+tokenizer.save_pretrained("./mental-health-tokenizer")
+
+# Load model dan tokenizer
+model = DistilBertForSequenceClassification.from_pretrained("./mental-health-model")
+tokenizer = DistilBertTokenizer.from_pretrained("./mental-health-tokenizer")
+
+# Fungsi prediksi
+def predict_mental_health(text):
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=512)
+    inputs = {key: val.to(device) for key, val in inputs.items()}  # Pindahkan ke GPU/CPU
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    logits = outputs.logits
+    predicted_class = torch.argmax(logits, dim=1).item()
+    return predicted_class
+
+# Contoh prediksi
+test_statements = [
+    "I am feeling great today!",
+    "I want to kill myself because of this situation.",
+    "My husband just blocked me and refuses to deal with my mental health.",
+    "Nobody takes me seriously.",
+    "I am feeling dizzy."
+]
+
+for text in test_statements:
+    print(f"Text: {text}")
+    print(f"Predicted Label: {label_map[predict_mental_health(text)]}")
+    print("-" * 50)
