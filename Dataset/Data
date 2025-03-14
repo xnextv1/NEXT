@@ -37,6 +37,24 @@ data = {
 # Konversi ke DataFrame
 df = pd.DataFrame(data)
 
+# Menambahkan dataset baru
+new_data = {
+    "text": [
+        "I feel so anxious all the time.",
+        "I can't focus on anything.",
+        "I am so happy with my life.",
+        "I feel like I am losing my mind.",
+        "I have been feeling very low lately."
+    ],
+    "label": [0, 4, 1, 2, 2]  # Sesuaikan dengan label_map
+}
+
+# Konversi ke DataFrame
+new_df = pd.DataFrame(new_data)
+
+# Gabungkan dataset lama dan baru
+df = pd.concat([df, new_df], ignore_index=True)
+
 # Bagi dataset menjadi train dan test
 train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
 
@@ -117,4 +135,68 @@ test_statements = [
 for text in test_statements:
     print(f"Text: {text}")
     print(f"Predicted Label: {label_map[predict_mental_health(text)]}")
+    print("-" * 50)
+
+# Import library yang diperlukan
+from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
+import torch
+
+# Inisialisasi device (GPU/CPU)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Label mapping untuk klasifikasi
+label_map = {
+    0: "Anxiety",
+    1: "Normal",
+    2: "Depression",
+    3: "Suicidal",
+    4: "Stress",
+    5: "Bipolar",
+    6: "Personality disorder"
+}
+
+# Load model dan tokenizer
+model = DistilBertForSequenceClassification.from_pretrained("./mental-health-model")
+tokenizer = DistilBertTokenizer.from_pretrained("./mental-health-tokenizer")
+
+# Fungsi prediksi
+def predict_mental_health(text):
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=512)
+    inputs = {key: val.to(device) for key, val in inputs.items()}  # Pindahkan ke GPU/CPU
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    logits = outputs.logits
+    predicted_class = torch.argmax(logits, dim=1).item()
+    return predicted_class
+
+# Fungsi untuk menangani prediksi berbahaya
+def handle_sensitive_content(text, predicted_label):
+    sensitive_labels = ["Suicidal", "Depression", "Anxiety", "Stress", "Bipolar", "Personality disorder"]
+    
+    if predicted_label in sensitive_labels:
+        print(f"Warning: Predicted label '{predicted_label}' detected for text: '{text}'")
+        print("Please consider reaching out to a mental health professional.")
+        print("Here are some resources that might help:")
+        print("- National Suicide Prevention Lifeline: 1-800-273-TALK (8255)")
+        print("- Crisis Text Line: Text 'HELLO' to 741741")
+        print("- Find a therapist near you: https://www.psychologytoday.com/us/therapists")
+    else:
+        print(f"Text: {text}")
+        print(f"Predicted Label: {predicted_label}")
+
+# Contoh prediksi dengan pencegahan
+test_statements = [
+    "I am feeling great today!",
+    "I want to kill myself because of this situation.",
+    "My husband just blocked me and refuses to deal with my mental health.",
+    "Nobody takes me seriously.",
+    "I am feeling dizzy."
+]
+
+for text in test_statements:
+    predicted_class = predict_mental_health(text)
+    predicted_label = label_map[predicted_class]
+    handle_sensitive_content(text, predicted_label)
     print("-" * 50)
